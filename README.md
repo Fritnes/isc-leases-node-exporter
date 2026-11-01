@@ -1,11 +1,11 @@
-# -isc-leases-node-exporter
+# isc-leases-node-exporter
 
 Tool to import ISC-DHCP-SERVER active (valid) leases to node exporter text file
 
 Requirements:
 
     ISC-DHCP-SERVER
-    Python 2.7
+    Python 3.9+
 
 crontab:
 
@@ -14,7 +14,7 @@ crontab:
 by default use "/var/lib/dhcpd/dhcpd.leases", you can change path with -f argument
 
 Grafana dashboard:
-![alt text](https://github.com/Fritnes/-isc-leases-node-exporter/blob/main/grafana-dashboard/dashboard.png?raw=true)
+![alt text](https://github.com/Fritnes/isc-leases-node-exporter/blob/main/grafana-dashboard/dashboard.png?raw=true)
 
 Disclaimer:
 Major code source was not developed by Me.

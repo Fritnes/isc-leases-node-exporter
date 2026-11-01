@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 import datetime, bisect
 import argparse
 
@@ -152,9 +152,10 @@ def round_timedelta(tdelta):
                 tdelta.seconds + (0 if tdelta.microseconds < 500000 else 1))
 
 def timestamp_now():
-        n = datetime.datetime.utcnow()
-        return datetime.datetime(n.year, n.month, n.day, n.hour, n.minute,
-                n.second + (0 if n.microsecond < 500000 else 1))
+        n = datetime.datetime.now(datetime.timezone.utc)
+        if n.microsecond >= 500000:
+                n += datetime.timedelta(seconds=1)
+        return n.replace(microsecond=0, tzinfo=None)
 
 def lease_is_active(lease_rec, as_of_ts):
         return timestamp_is_between(as_of_ts, lease_rec['starts'],
@@ -188,7 +189,7 @@ myfile.close()
 now = timestamp_now()
 report_dataset = select_active_leases(leases, now)
 for lease in report_dataset:
-	ddns = '",' +  'ddns="' + lease['client-hostname'] if lease['client-hostname']else ""
+        ddns = '",' +  'ddns="' + lease['client-hostname'] if lease['client-hostname']else ""
         print('dhcpd_active_leases{ip="' + format(lease['ip_address'], '<15').strip() +  '",' + \
                 'mac="' + format(lease['hardware'], '<17') + '",' + \
                 'time="' + format(str((lease['ends'] - now) if lease['ends'] != 'never' else 'never'), '>20').replace(" ", "") + ddns + '"} 1')
