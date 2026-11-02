@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-import datetime, bisect
 import argparse
+import bisect
+import datetime
+import os
+import sys
+import tempfile
+import time
 
 def parse_timestamp(raw_str):
         tokens = raw_str.split()
@@ -177,19 +182,74 @@ def select_active_leases(leases_db, as_of_ts):
                         sortedarray.insert(insertpos, ip_as_int)
                         retarray.insert(insertpos, lease_rec)
         return retarray
+
 ##############################################################################
 
-parser = argparse.ArgumentParser(description='isc leases to node exporter textfile')
-parser.add_argument('-f', '--file', type=str, help='dhcpd.leases', default='/var/lib/dhcpd/dhcpd.leases')
-args = parser.parse_args()
+def esc(v):
+    """Escape a Prometheus label value (backslash, quote, newline)."""
+    return str(v).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
 
-myfile = open(args.file, 'r')
-leases = parse_leases_file(myfile)
-myfile.close()
-now = timestamp_now()
-report_dataset = select_active_leases(leases, now)
-for lease in report_dataset:
-        ddns = '",' +  'ddns="' + lease['client-hostname'] if lease['client-hostname']else ""
-        print('dhcpd_active_leases{ip="' + format(lease['ip_address'], '<15').strip() +  '",' + \
-                'mac="' + format(lease['hardware'], '<17') + '",' + \
-                'time="' + format(str((lease['ends'] - now) if lease['ends'] != 'never' else 'never'), '>20').replace(" ", "") + ddns + '"} 1')
+
+def write_atomic(path, text):
+    d = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(dir=d, prefix='.dhcp.', suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)          # atomic on the same filesystem
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def load_leases(path, retries=2, delay=2):
+    for attempt in range(retries + 1):
+        try:
+            with open(path, 'r') as f:
+                return parse_leases_file(f)
+        except OSError:
+            raise                      # missing/permissions: retrying won't help
+        except Exception:
+            if attempt == retries:
+                raise
+            time.sleep(delay)          # possibly caught dhcpd mid-write
+
+
+def render(leases, now):
+    out = []
+    for lease in select_active_leases(leases, now):
+        remaining = 'never' if lease['ends'] == 'never' else str(lease['ends'] - now)
+        labels = 'ip="%s",mac="%s",time="%s"' % (
+            esc(lease['ip_address']), esc(lease['hardware']), esc(remaining))
+        if lease['client-hostname']:
+            labels += ',ddns="%s"' % esc(lease['client-hostname'])
+        out.append('dhcpd_active_leases{%s} 1' % labels)
+    out.append('dhcpd_leases_last_success_timestamp_seconds %d' % time.time())
+    return '\n'.join(out) + '\n'
+
+
+def main():
+    parser = argparse.ArgumentParser(description='isc leases to node exporter textfile')
+    parser.add_argument('-f', '--file', type=str, help='dhcpd.leases',
+                        default='/var/lib/dhcpd/dhcpd.leases')
+    parser.add_argument('-o', '--output', type=str,
+                        help='write atomically to this .prom file (default: stdout)')
+    args = parser.parse_args()
+    try:
+        text = render(load_leases(args.file), timestamp_now())
+        if args.output:
+            write_atomic(args.output, text)
+        else:
+            sys.stdout.write(text)
+    except Exception as e:
+        print('dhcp.py: %s: %s' % (type(e).__name__, e), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

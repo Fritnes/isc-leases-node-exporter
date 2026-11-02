@@ -9,7 +9,7 @@ Requirements:
 
 crontab:
 
-*/5 * * * * /opt/monitoring_tools/node_exporter/scripts_collector/dhcp.py > /opt/monitoring_tools/node_exporter/textfile_collector/dhcp.prom
+*/5 * * * * /opt/monitoring_tools/node_exporter/scripts_collector/dhcp.py -o /opt/monitoring_tools/node_exporter/textfile_collector/dhcp.prom
 
 by default use "/var/lib/dhcpd/dhcpd.leases", you can change path with -f argument
 
